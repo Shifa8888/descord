@@ -1,15 +1,21 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Hash, Volume2, Send, Smile, Plus, ChevronDown,
   Phone, Video, Pin, Users, Search, Bell, Settings, Mic, MicOff,
-  Headphones, X, Menu, ImagePlus, Gift, MessageSquare,
+  Headphones, X, Menu, ImagePlus, Gift, MessageSquare, Link as LinkIcon, Copy, Check,
 } from 'lucide-react';
 import { cn } from './utils/cn';
 import {
   users, servers, getMessages, autoReplies,
   type UserData, type MessageData, type ServerData, type ChannelData, type Status,
 } from './data';
+import {
+  createInvite, createInviteUrl, parseInviteFromUrl, getInvitesForServer,
+  deleteInvite, joinServerViaInvite, hasJoinedServer,
+  type InviteData,
+} from './utils/invite';
 
 /* ─── Status Badge ─── */
 const statusColor: Record<Status, string> = {
