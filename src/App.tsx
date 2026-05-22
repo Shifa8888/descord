@@ -250,6 +250,11 @@ export default function App() {
   const [mobileDrawer, setMobileDrawer] = useState(false);
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [currentInvite, setCurrentInvite] = useState<InviteData | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joinSuccess, setJoinSuccess] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -300,6 +305,69 @@ export default function App() {
   const offlineMembers = users.filter(u => u.status === 'offline');
 
   const myUser: UserData = { id: 'me', name: 'You', initials: 'ME', status: 'online', activity: 'Online', color: 'from-violet-500 to-fuchsia-500' };
+
+  // Handle invite link on page load
+  useEffect(() => {
+    const inviteCode = parseInviteFromUrl();
+    if (inviteCode) {
+      const result = joinServerViaInvite(inviteCode);
+      if (result.success && result.serverId) {
+        setJoinSuccess(`Successfully joined ${result.serverId}!`);
+        // Clear the URL
+        window.history.replaceState(null, '', '/');
+        setTimeout(() => setJoinSuccess(null), 5000);
+      } else {
+        setJoinError(result.error || 'Failed to join');
+        setTimeout(() => setJoinError(null), 5000);
+      }
+    }
+  }, []);
+
+  // Generate or get existing invite for current server
+  const handleGenerateInvite = useCallback(() => {
+    const existingInvites = getInvitesForServer(serverId);
+    if (existingInvites.length > 0) {
+      setCurrentInvite(existingInvites[0]);
+    } else {
+      const newInvite = createInvite({
+        serverId,
+        serverName: server.name,
+        channelId,
+        channelName: channel.name,
+        createdBy: 'me',
+      });
+      setCurrentInvite(newInvite);
+    }
+    setInviteModalOpen(true);
+    setCopied(false);
+  }, [serverId, server.name, channelId, channel.name]);
+
+  // Copy invite link to clipboard
+  const handleCopyInvite = useCallback(() => {
+    if (currentInvite) {
+      const url = createInviteUrl(currentInvite.code);
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  }, [currentInvite]);
+
+  // Delete current invite and generate new one
+  const handleRegenerateInvite = useCallback(() => {
+    if (currentInvite) {
+      deleteInvite(currentInvite.code);
+    }
+    const newInvite = createInvite({
+      serverId,
+      serverName: server.name,
+      channelId,
+      channelName: channel.name,
+      createdBy: 'me',
+    });
+    setCurrentInvite(newInvite);
+    setCopied(false);
+  }, [serverId, server.name, channelId, channel.name, currentInvite]);
 
   return (
     <div className="h-full flex bg-[#0b0b10]">
@@ -405,6 +473,14 @@ export default function App() {
             <motion.button whileHover={{ scale: 1.1 }} className="p-1.5 rounded hover:bg-white/10 cursor-pointer relative">
               <Bell className="w-[18px] h-[18px] text-[#8e8ea0]" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              onClick={handleGenerateInvite}
+              className="p-1.5 rounded hover:bg-white/10 cursor-pointer"
+              title="Create invite link"
+            >
+              <LinkIcon className="w-[18px] h-[18px] text-[#8e8ea0]" />
             </motion.button>
           </div>
         </header>
@@ -610,6 +686,152 @@ export default function App() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* ── INVITE MODAL ── */}
+      <AnimatePresence>
+        {inviteModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setInviteModalOpen(false)}
+              className="fixed inset-0 bg-black/60 z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[90%] max-w-md"
+            >
+              <div className="bg-[#1a1a2e] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b border-white/10">
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Create Invite</h3>
+                    <p className="text-xs text-[#55556a] mt-0.5">Invite friends to join {server.name}</p>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setInviteModalOpen(false)}
+                    className="p-1 rounded hover:bg-white/10 cursor-pointer"
+                  >
+                    <X className="w-5 h-5 text-[#8e8ea0]" />
+                  </motion.button>
+                </div>
+
+                {/* Content */}
+                <div className="p-4 space-y-4">
+                  {currentInvite ? (
+                    <>
+                      {/* Invite Link Display */}
+                      <div className="bg-[#0b0b10] rounded-lg p-3 border border-white/5">
+                        <p className="text-xs text-[#55556a] mb-2">Invite Link</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-sm text-white font-mono bg-white/5 px-3 py-2 rounded truncate">
+                            {createInviteUrl(currentInvite.code)}
+                          </code>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleCopyInvite}
+                            className={cn(
+                              'px-3 py-2 rounded-lg flex items-center gap-2 cursor-pointer transition-all',
+                              copied
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-gradient-to-r from-[#7c5cfc] to-[#6944e0] text-white'
+                            )}
+                          >
+                            {copied ? (
+                              <>
+                                <Check className="w-4 h-4" />
+                                <span className="text-sm">Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4" />
+                                <span className="text-sm">Copy</span>
+                              </>
+                            )}
+                          </motion.button>
+                        </div>
+                      </div>
+
+                      {/* Invite Details */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-[#0b0b10] rounded-lg p-3 border border-white/5">
+                          <p className="text-xs text-[#55556a]">Server</p>
+                          <p className="text-sm text-white font-medium mt-0.5">{currentInvite.serverName}</p>
+                        </div>
+                        <div className="bg-[#0b0b10] rounded-lg p-3 border border-white/5">
+                          <p className="text-xs text-[#55556a]">Channel</p>
+                          <p className="text-sm text-white font-medium mt-0.5">#{currentInvite.channelName || 'general'}</p>
+                        </div>
+                        <div className="bg-[#0b0b10] rounded-lg p-3 border border-white/5">
+                          <p className="text-xs text-[#55556a]">Invite Code</p>
+                          <p className="text-sm text-white font-mono mt-0.5">{currentInvite.code}</p>
+                        </div>
+                        <div className="bg-[#0b0b10] rounded-lg p-3 border border-white/5">
+                          <p className="text-xs text-[#55556a]">Uses</p>
+                          <p className="text-sm text-white font-medium mt-0.5">{currentInvite.uses} / ∞</p>
+                        </div>
+                      </div>
+
+                      {/* Regenerate Button */}
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleRegenerateInvite}
+                        className="w-full py-2.5 rounded-lg border border-white/10 text-sm text-[#8e8ea0] hover:text-white hover:bg-white/5 cursor-pointer transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Generate New Link
+                      </motion.button>
+                    </>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-[#55556a]">Generating invite...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── JOIN SUCCESS NOTIFICATION ── */}
+      <AnimatePresence>
+        {joinSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -50, x: '-50%' }}
+            className="fixed top-4 left-1/2 z-50 bg-emerald-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3"
+          >
+            <Check className="w-5 h-5" />
+            <span className="font-medium">{joinSuccess}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── JOIN ERROR NOTIFICATION ── */}
+      <AnimatePresence>
+        {joinError && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -50, x: '-50%' }}
+            className="fixed top-4 left-1/2 z-50 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3"
+          >
+            <X className="w-5 h-5" />
+            <span className="font-medium">{joinError}</span>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
