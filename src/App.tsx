@@ -482,6 +482,14 @@ export default function App() {
             >
               <LinkIcon className="w-[18px] h-[18px] text-[#8e8ea0]" />
             </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              onClick={() => window.open('https://wa.me/923289505157', '_blank')}
+              className="p-1.5 rounded hover:bg-white/10 cursor-pointer"
+              title="Contact on WhatsApp"
+            >
+              <Phone className="w-[18px] h-[18px] text-green-400" />
+            </motion.button>
           </div>
         </header>
 
